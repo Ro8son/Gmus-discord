@@ -116,8 +116,8 @@ func message_create(s *discord.Session, m *discord.MessageCreate) {
 			if vs.UserID == m.Author.ID {
 				botto.Play(content, vs.ChannelID)
 			}
-			return
 		}
+		return
 	case "!help":
 		fallthrough
 	default:
