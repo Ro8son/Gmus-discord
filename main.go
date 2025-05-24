@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -29,13 +30,13 @@ var token string
 func main() {
 
 	if token == "" {
-		fmt.Println("No token provided. Please run: airhorn -t <bot token>")
+		log.Println("No token provided. Please run: airhorn -t <bot token>")
 		return
 	}
 
 	dg, err := discord.New("Bot " + token)
 	if err != nil {
-		fmt.Println("Error creating Discord session: ", err)
+		log.Println("Error creating Discord session: ", err)
 		return
 	}
 
@@ -46,11 +47,11 @@ func main() {
 
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("Error opening Discord session: ", err)
+		log.Println("Error opening Discord session: ", err)
 	}
 
 	// Wait here until CTRL-C or other term signal is received.
-	fmt.Println("Takobot is now running.  Press CTRL-C to exit.")
+	log.Println("Takobot is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
@@ -105,11 +106,19 @@ func message_create(s *discord.Session, m *discord.MessageCreate) {
 	case "!loop":
 		s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop())
 	case "!queue":
-		s.ChannelMessageSend(m.ChannelID, " \n\n"+strings.Join(botto.Queue(), "\n"))
+		s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop()+"\n"+botto.Queue())
 	case "!jump":
 		if !valid {
 			return
 		}
+		number, err := strconv.Atoi(content)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		botto.Jump(number)
+	case "!current":
+		s.ChannelMessageSend(m.ChannelID, "Current: "+botto.Current())
 	case "!clear":
 		botto.Clear()
 	case "!play":

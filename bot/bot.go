@@ -7,6 +7,7 @@ import (
 	"log"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"time"
 
 	discord "github.com/bwmarrin/discordgo"
@@ -14,24 +15,12 @@ import (
 )
 
 var (
-	//s                *discordgo.Session
 	AudioChannels    int    = 2
 	AudioFrameRate   int    = 48000
 	AudioFrameSize   int    = 960
 	AudioBitrate     int    = 128
 	AudioApplication string = "voip"
 	MaxBytes         int    = (AudioFrameSize * AudioChannels) * 2
-	//OpusEncoder      *gopus.Encoder
-
-	// EncodeChan chan []int16
-	// OutputChan chan []byte
-
-	// ffmpeg_stream io.ReadCloser
-	// target        int
-	// queue         []string
-	// urls          []string
-	// running       bool
-	// loop          bool
 )
 
 type Bot struct {
@@ -41,21 +30,24 @@ type Bot struct {
 	// channelID string
 
 	opusEncoder *gopus.Encoder
+	yt_dlp      *exec.Cmd
+	ffmpeg      *exec.Cmd
 
 	encodeChan chan []int16
 	outputChan chan []byte
 
 	ffmpegStream io.ReadCloser
-	plr          Player
-}
+	queue        []*Title
 
-type Player struct {
 	current int
-	Queue   []string
-	Titles  []string
-	urls    []string
 	playing bool
 	loop    bool
+}
+
+type Title struct {
+	url   string
+	title string
+	loop  bool
 }
 
 func (bot *Bot) Init(s *discord.Session, guildID string) {
@@ -82,53 +74,58 @@ func (bot *Bot) play(channelID string) {
 	if err != nil {
 		log.Println(err)
 		return
-		//return err
 	}
+	bot.current = 0
+	bot.yt_dlp = nil
 
 	connect(vc)
 
-	for bot.plr.current < len(bot.plr.Queue) {
+	for bot.current < len(bot.queue) {
 
 		bot.encodeChan = make(chan []int16, 450)
 		bot.outputChan = make(chan []byte, 450)
 
-		url := bot.plr.Queue[bot.plr.current]
-		//go get_title(url, m)
+		log.Printf("Current: %d ", bot.current)
+		url := bot.queue[bot.current].url
+		log.Printf("Current: %s", url)
 
 		bot.downloader(url)
-		//time.Sleep(500 * time.Millisecond)
 		go bot.reader()
 		go bot.encoder()
 
 		bot.play_sound(vc)
 
-		bot.plr.current++
-		if bot.plr.current >= len(bot.plr.Queue) && bot.plr.loop {
-			bot.plr.current = 0
+		bot.yt_dlp.Process.Signal(syscall.SIGINT)
+		bot.ffmpeg.Process.Signal(syscall.SIGKILL)
+		bot.yt_dlp.Wait()
+		bot.ffmpeg.Wait()
+
+		bot.current++
+		if bot.current >= len(bot.queue) && bot.loop {
+			bot.current = 0
 		}
 	}
 
-	bot.plr.Queue = bot.plr.Queue[:0]
-	bot.plr.Titles = bot.plr.Titles[:0]
-	bot.plr.current = 0
+	bot.queue = bot.queue[:0]
+	bot.current = 0
 
 	disconnect(vc)
 }
 
 func (bot *Bot) downloader(url string) {
-	cmd := exec.Command("yt-dlp", "-f", "251", "-o", "-", url)
-	ffmpeg_cmd := exec.Command("ffmpeg", "-i", "pipe:0", "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1")
-	ffmpeg_cmd.Stdin, _ = cmd.StdoutPipe()
-	bot.ffmpegStream, _ = ffmpeg_cmd.StdoutPipe()
+	bot.yt_dlp = exec.Command("yt-dlp", "-f", "bestaudio", "-x", "-o", "-", url)
+	bot.ffmpeg = exec.Command("ffmpeg", "-i", "pipe:0", "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1")
+	bot.ffmpeg.Stdin, _ = bot.yt_dlp.StdoutPipe()
+	bot.ffmpegStream, _ = bot.ffmpeg.StdoutPipe()
 
 	// Start yt-dlp command
-	if err := cmd.Start(); err != nil {
+	if err := bot.yt_dlp.Start(); err != nil {
 		log.Println("Error starting yt-dlp command:", err)
 		return
 	}
 
 	// Start ffmpeg command
-	if err := ffmpeg_cmd.Start(); err != nil {
+	if err := bot.ffmpeg.Start(); err != nil {
 		log.Println("Error starting ffmpeg command:", err)
 		return
 	}
@@ -197,11 +194,12 @@ func (bot *Bot) encoder() {
 // playSound plays the current buffer to the provided channel.
 func (bot *Bot) play_sound(vc *discord.VoiceConnection) (err error) {
 
-	bot.plr.playing = true
-	for bot.plr.playing {
+	bot.playing = true
+	for bot.playing {
 		opus, ok := <-bot.outputChan
 		if !ok {
-			bot.plr.playing = false
+			bot.playing = false
+			log.Println("End")
 		}
 		vc.OpusSend <- opus
 	}
@@ -224,40 +222,51 @@ func disconnect(vc *discord.VoiceConnection) {
 }
 
 func (bot *Bot) Skip() {
-	bot.plr.playing = false
+	bot.playing = false
 }
 
 func (bot *Bot) Loop() string {
-	bot.plr.loop = !bot.plr.loop
-	return strconv.FormatBool(bot.plr.loop)
+	bot.loop = !bot.loop
+	return strconv.FormatBool(bot.loop)
 }
 
 func (bot *Bot) Play(url string, channelID string) {
-	bot.plr.Queue = append(bot.plr.Queue, url)
-	go bot.get_title(url)
-	//bot.session.ChannelMessageSend(bot.channelID, "Added to queue: "+url)
-	if len(bot.plr.Queue) == 1 {
+	title := Title{url: url, title: url, loop: false}
+	bot.queue = append(bot.queue, &title)
+
+	go bot.getTitle(&title)
+
+	if len(bot.queue) == 1 {
 		bot.play(channelID)
 	}
 }
 
-func (bot *Bot) Len() int {
-	return len(bot.plr.Queue)
-}
-
 func (bot *Bot) Clear() {
-	bot.plr.Queue = bot.plr.Queue[:0]
-	bot.plr.Titles = bot.plr.Titles[:0]
-	bot.plr.loop = false
-	bot.plr.playing = false
+	bot.queue = bot.queue[:0]
+	bot.loop = false
+	bot.playing = false
 }
 
-func (bot *Bot) Queue() []string {
-	return bot.plr.Titles
+func (bot *Bot) Queue() string {
+	var titles string
+	for count, m := range bot.queue {
+		titles += strconv.Itoa(count) + ": " + m.title + "\n"
+	}
+	return titles
 }
 
-func (bot *Bot) get_title(query string) {
-	cmd := exec.Command("yt-dlp", query, "--get-title")
+func (bot *Bot) Jump(num int) {
+	bot.playing = false
+	bot.current = num - 1
+	log.Printf("Current: %d ", num-1)
+}
+
+func (bot *Bot) Current() string {
+	return bot.queue[bot.current].url
+}
+
+func (bot *Bot) getTitle(title *Title) {
+	cmd := exec.Command("yt-dlp", title.url, "--get-title")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -265,6 +274,6 @@ func (bot *Bot) get_title(query string) {
 	}
 
 	output_string := string(output)
-
-	bot.plr.Titles = append(bot.plr.Titles, output_string)
+	log.Printf("Title: %s", output_string)
+	title.title = output_string
 }
