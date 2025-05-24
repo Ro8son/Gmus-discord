@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os/exec"
+	"strconv"
 	"time"
 
 	discord "github.com/bwmarrin/discordgo"
@@ -51,6 +52,7 @@ type Bot struct {
 type Player struct {
 	current int
 	Queue   []string
+	Titles  []string
 	urls    []string
 	playing bool
 	loop    bool
@@ -107,6 +109,7 @@ func (bot *Bot) play(channelID string) {
 	}
 
 	bot.plr.Queue = bot.plr.Queue[:0]
+	bot.plr.Titles = bot.plr.Titles[:0]
 	bot.plr.current = 0
 
 	disconnect(vc)
@@ -224,12 +227,14 @@ func (bot *Bot) Skip() {
 	bot.plr.playing = false
 }
 
-func (bot *Bot) Loop() {
+func (bot *Bot) Loop() string {
 	bot.plr.loop = !bot.plr.loop
+	return strconv.FormatBool(bot.plr.loop)
 }
 
 func (bot *Bot) Play(url string, channelID string) {
 	bot.plr.Queue = append(bot.plr.Queue, url)
+	go bot.get_title(url)
 	//bot.session.ChannelMessageSend(bot.channelID, "Added to queue: "+url)
 	if len(bot.plr.Queue) == 1 {
 		bot.play(channelID)
@@ -240,15 +245,26 @@ func (bot *Bot) Len() int {
 	return len(bot.plr.Queue)
 }
 
-// func get_title(query string, channel_id string) {
-// 	cmd := exec.Command("yt-dlp", query, "--get-title")
-//
-// 	output, err := cmd.Output()
-// 	if err != nil {
-// 		fmt.Println("Error executing command:", err)
-// 	}
-//
-// 	output_string := string(output)
-//
-// 	s.ChannelMessageSend(channel_id, "Playing: "+output_string)
-// }
+func (bot *Bot) Clear() {
+	bot.plr.Queue = bot.plr.Queue[:0]
+	bot.plr.Titles = bot.plr.Titles[:0]
+	bot.plr.loop = false
+	bot.plr.playing = false
+}
+
+func (bot *Bot) Queue() []string {
+	return bot.plr.Titles
+}
+
+func (bot *Bot) get_title(query string) {
+	cmd := exec.Command("yt-dlp", query, "--get-title")
+
+	output, err := cmd.Output()
+	if err != nil {
+		log.Println("Error executing command:", err)
+	}
+
+	output_string := string(output)
+
+	bot.plr.Titles = append(bot.plr.Titles, output_string)
+}

@@ -100,20 +100,25 @@ func message_create(s *discord.Session, m *discord.MessageCreate) {
 	command, content, valid := strings.Cut(m.Content, " ")
 	switch command {
 	case "!skip":
+		s.ChannelMessageSend(m.ChannelID, "Skipped")
 		botto.Skip()
 	case "!loop":
-		botto.Loop()
+		s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop())
 	case "!queue":
+		s.ChannelMessageSend(m.ChannelID, " \n\n"+strings.Join(botto.Queue(), "\n"))
 	case "!jump":
 		if !valid {
 			return
 		}
+	case "!clear":
+		botto.Clear()
 	case "!play":
 		if !valid {
 			return
 		}
 		for _, vs := range g.VoiceStates {
 			if vs.UserID == m.Author.ID {
+				s.ChannelMessageSend(m.ChannelID, "Added: "+content)
 				botto.Play(content, vs.ChannelID)
 			}
 		}
