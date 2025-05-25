@@ -249,6 +249,7 @@ func (bot *Bot) Clear() {
 
 func (bot *Bot) Queue() string {
 	var titles string
+	titles += "Loop: " + strconv.FormatBool(bot.loop) + "\n"
 	for count, m := range bot.queue {
 		titles += strconv.Itoa(count) + ": " + m.title + "\n"
 	}
