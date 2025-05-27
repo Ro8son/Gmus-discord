@@ -104,7 +104,12 @@ func message_create(s *discord.Session, m *discord.MessageCreate) {
 		s.ChannelMessageSend(m.ChannelID, "Skipped")
 		botto.Skip()
 	case "!loop":
-		s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop())
+		if valid && content == "one" {
+			s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop(1))
+		}
+		if !valid {
+			s.ChannelMessageSend(m.ChannelID, "Loop: "+botto.Loop(0))
+		}
 	case "!queue":
 		s.ChannelMessageSend(m.ChannelID, botto.Queue())
 	case "!jump":

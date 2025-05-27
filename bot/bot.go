@@ -42,6 +42,7 @@ type Bot struct {
 	current int
 	playing bool
 	loop    bool
+	loopOne bool
 }
 
 type Title struct {
@@ -100,7 +101,9 @@ func (bot *Bot) play(channelID string) {
 		bot.yt_dlp.Wait()
 		bot.ffmpeg.Wait()
 
-		bot.current++
+		if !bot.loopOne {
+			bot.current++
+		}
 		if bot.current >= len(bot.queue) && bot.loop {
 			bot.current = 0
 		}
@@ -223,11 +226,17 @@ func disconnect(vc *discord.VoiceConnection) {
 
 func (bot *Bot) Skip() {
 	bot.playing = false
+	bot.loopOne = false
 }
 
-func (bot *Bot) Loop() string {
-	bot.loop = !bot.loop
-	return strconv.FormatBool(bot.loop)
+func (bot *Bot) Loop(mode int) string {
+	if mode == 0 {
+		bot.loop = !bot.loop
+		return strconv.FormatBool(bot.loop)
+	} else {
+		bot.loopOne = !bot.loopOne
+		return strconv.FormatBool(bot.loopOne) + " - " + bot.Current()
+	}
 }
 
 func (bot *Bot) Play(url string, channelID string) {
@@ -244,6 +253,7 @@ func (bot *Bot) Play(url string, channelID string) {
 func (bot *Bot) Clear() {
 	bot.queue = bot.queue[:0]
 	bot.loop = false
+	bot.loopOne = false
 	bot.playing = false
 }
 
@@ -251,6 +261,12 @@ func (bot *Bot) Queue() string {
 	var titles string
 	titles += "Loop: " + strconv.FormatBool(bot.loop) + "\n"
 	for count, m := range bot.queue {
+		if bot.current == count {
+			titles += "  > "
+			if bot.loopOne == true {
+				titles += " loop "
+			}
+		}
 		titles += strconv.Itoa(count) + ": " + m.title + "\n"
 	}
 	return titles
