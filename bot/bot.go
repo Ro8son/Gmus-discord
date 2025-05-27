@@ -113,7 +113,7 @@ func (bot *Bot) play(channelID string) {
 }
 
 func (bot *Bot) downloader(url string) {
-	bot.yt_dlp = exec.Command("yt-dlp", "-f", "bestaudio", "-x", "-o", "-", url)
+	bot.yt_dlp = exec.Command("yt-dlp", "-f", "251", "-o", "-", url)
 	bot.ffmpeg = exec.Command("ffmpeg", "-i", "pipe:0", "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1")
 	bot.ffmpeg.Stdin, _ = bot.yt_dlp.StdoutPipe()
 	bot.ffmpegStream, _ = bot.ffmpeg.StdoutPipe()
